@@ -1,6 +1,10 @@
-from fastapi import APIRouter
+from typing import Annotated
 
-from app.api.dependencies import AuthConfig, CurrentUser, Database, unauthorized
+from fastapi import APIRouter, Depends
+
+from app.api.dependencies import AuthConfig, Database, require_permission, unauthorized
+from app.core.permissions import Permission
+from app.models import User
 from app.core.security import create_access_token
 from app.schemas.auth import CurrentUserResponse, LoginRequest, TokenResponse
 from app.services.auth import authenticate_user
@@ -20,5 +24,5 @@ def login(payload: LoginRequest, db: Database, settings: AuthConfig) -> TokenRes
 
 
 @router.get("/me", response_model=CurrentUserResponse)
-def me(user: CurrentUser) -> CurrentUserResponse:
+def me(user: Annotated[User, Depends(require_permission(Permission.PROFILE_READ))]) -> CurrentUserResponse:
     return CurrentUserResponse.model_validate(user)

@@ -1,4 +1,6 @@
 from collections.abc import Callable
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Annotated
 from uuid import UUID
 
@@ -9,12 +11,14 @@ from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.core.config import AuthSettings, get_auth_settings
+from app.core.permissions import Permission
 from app.core.security import decode_access_token
 from app.db.dependencies import get_db
 from app.models import User
 from app.models.enums import UserRole
 from app.repositories.user import get_user_by_id
 from app.services.auth import user_is_active
+from app.services.authorization import AuthorizationError, ensure_permission
 
 bearer = HTTPBearer(auto_error=False)
 Database = Annotated[Session, Depends(get_db)]
@@ -48,6 +52,24 @@ def get_current_user(
 
 
 CurrentUser = Annotated[User, Depends(get_current_user)]
+
+
+@contextmanager
+def authorization_errors() -> Iterator[None]:
+    """Keep reusable domain policies independent of FastAPI exceptions."""
+    try:
+        yield
+    except AuthorizationError as exc:
+        headers = {"WWW-Authenticate": "Bearer"} if exc.status_code == 401 else None
+        raise HTTPException(exc.status_code, detail=exc.detail, headers=headers) from None
+
+
+def require_permission(permission: Permission) -> Callable[..., User]:
+    def dependency(user: CurrentUser) -> User:
+        with authorization_errors():
+            ensure_permission(user, permission)
+        return user
+    return dependency
 
 
 def require_roles(*allowed_roles: UserRole) -> Callable[..., User]:
