@@ -21,6 +21,7 @@ class UserInternal(UserCreate):
     """Trusted persistence data; never use as a general API response."""
     id: UUID
     password_hash: str = Field(max_length=255, repr=False)
+    auth_version: int = Field(ge=1)
 
 
 class UserRead(Schema):

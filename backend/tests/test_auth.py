@@ -64,7 +64,7 @@ class SecurityTests(unittest.TestCase):
             with self.assertRaises(ValidationError):
                 AuthSettings(_env_file=None)
         settings = self.settings.model_copy(update={"JWT_ACCESS_TOKEN_MINUTES": 3})
-        token = create_access_token(uuid4(), uuid4(), settings)
+        token = create_access_token(uuid4(), uuid4(), settings, auth_version=1)
         claims = decode_access_token(token, settings)
         self.assertEqual(claims.exp - claims.iat, 180)
 
@@ -73,6 +73,13 @@ class SecurityTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 with TestClient(app):
                     pass
+
+    def test_token_issuer_requires_explicit_positive_integer_version(self):
+        for version in (0, -1, True, 1.0, "1", None):
+            with self.subTest(version=version), self.assertRaises(ValueError):
+                create_access_token(uuid4(), uuid4(), self.settings, auth_version=version)
+        token = create_access_token(uuid4(), uuid4(), self.settings, auth_version=1)
+        self.assertEqual(decode_access_token(token, self.settings).ver, 1)
 
     def test_input_exact_email_and_password_privacy(self):
         payload = LoginRequest(email="  MixedCase@example.invalid  ", password=" leading and trailing ")
@@ -153,7 +160,7 @@ class AuthHTTPTests(unittest.TestCase):
 
     def token(self, user=None):
         user = user or self.u1
-        return create_access_token(user.id, user.organization_id, self.settings)
+        return create_access_token(user.id, user.organization_id, self.settings, auth_version=user.auth_version)
 
     def me(self, token=None):
         headers = {"Authorization": "Bearer " + token} if token is not None else {}
@@ -233,7 +240,7 @@ class AuthHTTPTests(unittest.TestCase):
                    jwt.encode(payload, secrets.token_urlsafe(48), algorithm="HS256"),
                    jwt.encode(payload, self.settings.JWT_SECRET.get_secret_value(), algorithm="HS384"),
                    jwt.encode(payload, key="", algorithm="none")]
-        for field in ("sub", "organization_id", "iat", "exp", "iss", "aud"):
+        for field in ("sub", "organization_id", "iat", "exp", "iss", "aud", "ver"):
             incomplete = payload.copy()
             del incomplete[field]
             invalid.append(self.signed(incomplete))
@@ -248,6 +255,37 @@ class AuthHTTPTests(unittest.TestCase):
                 self.assertNotIn(candidate, response.text)
         self.assertEqual(self.client.get("/api/v1/auth/me", headers={"Authorization": "Basic fake"}).status_code, 401)
         self.assertEqual(self.client.get("/api/v1/auth/me", params={"access_token": token}).status_code, 401)
+
+    def test_legacy_missing_and_incorrect_versions_are_rejected(self):
+        token = self.token()
+        payload = jwt.decode(token, options={"verify_signature": False})
+        self.assertEqual(payload["ver"], 1)
+        legacy = payload.copy()
+        del legacy["ver"]
+        self.assertEqual(self.me(self.signed(legacy)).status_code, 401)
+        for version in (0, -1, True, 1.0, "1", None, [], {}, 2, 1000):
+            with self.subTest(version=version):
+                response = self.me(self.signed({**payload, "ver": version}))
+                self.assertEqual(response.status_code, 401)
+                self.assertEqual(response.headers["www-authenticate"], "Bearer")
+        self.assertEqual(self.me(token).status_code, 200)
+
+    def test_login_does_not_upgrade_its_verified_version_after_a_concurrent_revocation(self):
+        original_commit = self.db.commit
+        def commit_after_version_change():
+            # Simulate the final state of a deactivation/reactivation after verification.
+            self.db.execute(update(User).where(User.id == self.u1.id)
+                            .values(auth_version=User.auth_version + 1))
+            original_commit()
+        with patch.object(self.db, "commit", side_effect=commit_after_version_change):
+            response = self.login()
+        self.assertEqual(response.status_code, 200)
+        stale = response.json()["access_token"]
+        self.assertEqual(decode_access_token(stale, self.settings).ver, 1)
+        self.assertEqual(self.me(stale).status_code, 401)
+        fresh = self.login().json()["access_token"]
+        self.assertEqual(decode_access_token(fresh, self.settings).ver, 2)
+        self.assertEqual(self.me(fresh).status_code, 200)
 
     def test_role_changes_are_loaded_from_database_without_hierarchy(self):
         token = self.token()
@@ -309,9 +347,12 @@ class AuthHTTPTests(unittest.TestCase):
 
     def test_no_public_registration_routes_or_sensitive_openapi_fields(self):
         paths = app.openapi()["paths"]
-        self.assertEqual(set(paths), {"/health", "/api/v1/auth/login", "/api/v1/auth/me"})
-        for path in ("/api/v1/auth/register", "/api/v1/organizations", "/api/v1/users"):
+        self.assertEqual(set(paths), {"/health", "/api/v1/auth/login", "/api/v1/auth/me",
+                         "/api/v1/organizations/me", "/api/v1/users", "/api/v1/users/{user_id}",
+                         "/api/v1/users/{user_id}/role", "/api/v1/users/{user_id}/status"})
+        for path in ("/api/v1/auth/register", "/api/v1/organizations"):
             self.assertEqual(self.client.post(path, json={"role": "ADMINISTRADOR"}).status_code, 404)
+        self.assertEqual(self.client.post("/api/v1/users", json={"role": "ADMINISTRADOR"}).status_code, 401)
         profile_schema = app.openapi()["components"]["schemas"]["CurrentUserResponse"]["properties"]
         self.assertNotIn("password_hash", profile_schema)
         self.assertNotIn("password", profile_schema)

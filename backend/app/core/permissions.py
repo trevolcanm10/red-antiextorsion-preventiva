@@ -20,7 +20,7 @@ class Permission(StrEnum):
     ALERT_READ_DETAIL = "alert.read_detail"
     ALERT_ATTEND = "alert.attend"
     ALERT_CLOSE = "alert.close"
-    # Recognized but deliberately ungranted until their security rules are approved.
+    # Only explicitly granted actions below are enabled; no implicit role inheritance.
     REPORT_VALIDATE = "report.validate"
     REPORT_OBSERVE = "report.observe"
     REPORTER_IDENTITY_READ = "reporter_identity.read"
@@ -30,6 +30,8 @@ class Permission(StrEnum):
     USER_CREATE = "user.create"
     USER_ROLE_CHANGE = "user.change_role"
     USER_DEACTIVATE = "user.deactivate"
+    ORGANIZATION_READ_SELF = "organization.read_self"
+    USER_ACTIVATE = "user.activate"
     ORGANIZATION_MANAGE = "organization.manage"
     RESOURCE_DELETE = "resource.delete"
     ANALYSIS_WRITE = "analysis.write"
@@ -57,6 +59,8 @@ ROLE_PERMISSIONS = MappingProxyType({
         Permission.ANALYSIS_READ_SUMMARY, Permission.ANALYSIS_READ_DETAIL,
         Permission.ALERT_READ_PREVENTIVE, Permission.ALERT_READ_DETAIL,
         Permission.ALERT_ATTEND, Permission.ALERT_CLOSE,
+        Permission.ORGANIZATION_READ_SELF, Permission.USER_READ_OTHERS, Permission.USER_CREATE,
+        Permission.USER_ROLE_CHANGE, Permission.USER_DEACTIVATE, Permission.USER_ACTIVATE,
     }),
 })
 

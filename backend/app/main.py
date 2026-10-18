@@ -6,6 +6,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from app.api.routes.auth import router as auth_router
+from app.api.routes.accounts import router as accounts_router
 from app.core.config import get_auth_settings
 from app.core.security import dummy_password_hash
 
@@ -21,6 +22,7 @@ app = FastAPI(
     title="Red Antiextorsi?n Preventiva API", version="0.1.0", lifespan=lifespan,
 )
 app.include_router(auth_router)
+app.include_router(accounts_router)
 
 
 @app.exception_handler(RequestValidationError)
@@ -34,7 +36,7 @@ async def prevent_auth_caching(
     request: Request, call_next: Callable[[Request], Awaitable[Response]],
 ) -> Response:
     response = await call_next(request)
-    if request.url.path.startswith("/api/v1/auth/"):
+    if request.url.path.startswith(("/api/v1/auth/", "/api/v1/users", "/api/v1/organizations")):
         response.headers["Cache-Control"] = "no-store"
         response.headers["Pragma"] = "no-cache"
     return response

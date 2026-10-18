@@ -46,7 +46,7 @@ def get_current_user(
     if not user_is_active(user):
         raise unauthorized()
     assert user is not None
-    if user.organization_id != claims.organization_id:
+    if user.organization_id != claims.organization_id or user.auth_version != claims.ver:
         raise unauthorized()
     return user
 

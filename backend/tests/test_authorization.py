@@ -48,9 +48,13 @@ class PolicyTests(unittest.TestCase):
         common_actions = {Permission.PROFILE_READ, Permission.REPORT_CREATE, Permission.REPORT_READ,
                           Permission.REPORT_EDIT, Permission.EVIDENCE_ATTACH, Permission.EVIDENCE_READ,
                           Permission.ANALYSIS_READ_SUMMARY, Permission.ALERT_READ_PREVENTIVE}
+        administrative_actions = {Permission.ORGANIZATION_READ_SELF, Permission.USER_READ_OTHERS,
+                                  Permission.USER_CREATE, Permission.USER_ROLE_CHANGE, Permission.USER_DEACTIVATE, Permission.USER_ACTIVATE}
         for role in UserRole:
             for permission in Permission:
-                expected = permission in common_actions or (role != UserRole.USER and permission in staff_actions)
+                expected = (permission in common_actions
+                            or (role != UserRole.USER and permission in staff_actions)
+                            or (role == UserRole.ADMINISTRATOR and permission in administrative_actions))
                 with self.subTest(role=role, action=permission):
                     self.assertEqual(has_permission(role, permission), expected)
             self.assertFalse(has_permission(role, "unknown.action"))
@@ -149,8 +153,7 @@ class PolicyTests(unittest.TestCase):
 
     def test_sensitive_and_account_actions_disabled_for_every_role(self):
         disabled = (Permission.REPORTER_IDENTITY_READ, Permission.PRECISE_LOCATION_READ,
-                    Permission.EVIDENCE_PATH_READ, Permission.USER_READ_OTHERS, Permission.USER_CREATE,
-                    Permission.USER_ROLE_CHANGE, Permission.USER_DEACTIVATE, Permission.ORGANIZATION_MANAGE,
+                    Permission.EVIDENCE_PATH_READ, Permission.ORGANIZATION_MANAGE,
                     Permission.RESOURCE_DELETE, Permission.ANALYSIS_WRITE, Permission.ALERT_CREATE)
         for role in UserRole:
             user = self.actor(role)
@@ -248,7 +251,7 @@ class AuthorizationHTTPTests(unittest.TestCase):
             return {"allowed": True}
         def close(alert: Annotated[Alert, Depends(require_alert_transition(AlertStatus.CLOSED))]):
             return {"allowed": True}
-        def disabled(user: Annotated[User, Depends(require_permission(Permission.USER_CREATE))]):
+        def disabled(user: Annotated[User, Depends(require_permission(Permission.ORGANIZATION_MANAGE))]):
             return {"allowed": True}
         for path, endpoint in (
             ("/reports/{report_id}", report_read), ("/reports/{report_id}/edit", report_edit),
@@ -315,7 +318,7 @@ class AuthorizationHTTPTests(unittest.TestCase):
 
     def request(self, path, role=UserRole.USER, actor=None, token=None):
         user = actor or self.actors[role]
-        token = token or create_access_token(user.id, user.organization_id, self.settings)
+        token = token or create_access_token(user.id, user.organization_id, self.settings, auth_version=user.auth_version)
         return self.client.get(path, headers={"Authorization": "Bearer " + token})
 
     def test_report_reads_and_lists_follow_role_and_ownership(self):
@@ -408,7 +411,7 @@ class AuthorizationHTTPTests(unittest.TestCase):
 
     def test_role_change_with_same_token_and_disabled_actions(self):
         user = self.actors[UserRole.USER]
-        token = create_access_token(user.id, user.organization_id, self.settings)
+        token = create_access_token(user.id, user.organization_id, self.settings, auth_version=user.auth_version)
         other = self.reports[UserRole.MODERATOR]
         self.assertEqual(self.request(f"/reports/{other.id}/review", token=token).status_code, 403)
         for role, expected in ((UserRole.MODERATOR, 200), (UserRole.ADMINISTRATOR, 200), (UserRole.USER, 403)):
@@ -420,7 +423,7 @@ class AuthorizationHTTPTests(unittest.TestCase):
         self.assertEqual(self.client.get(f"/reports/{self.foreign.id}").status_code, 401)
         for role in UserRole:
             user = self.actors[role]
-            token = create_access_token(user.id, user.organization_id, self.settings)
+            token = create_access_token(user.id, user.organization_id, self.settings, auth_version=user.auth_version)
             for instance in (user, self.o1):
                 instance.status = GeneralStatus.INACTIVE; self.db.commit()
                 response = self.request(f"/reports/{self.reports[role].id}", token=token)

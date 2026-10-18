@@ -1,5 +1,10 @@
 # Fase 3.2 - Autorizacion por accion y recurso
 
+> Actualizacion Fase 3.3: el alcance historico de esta fase se amplia en
+> [accounts.md](accounts.md). Ahora existen rutas privadas de gestion de cuentas y
+> permisos administrativos explicitos. La ampliacion aprobada [auth-version.md](auth-version.md)
+> habilita reactivacion segura con auth_version y migracion 0002. Las restricciones de privacidad y organizacion siguen vigentes.
+
 Implementa permisos en codigo, politicas, consultas de alcance y dependencias FastAPI.
 No agrega roles, tablas, migraciones ni endpoints CRUD. La unica ruta productiva
 conectada al catalogo es GET /api/v1/auth/me (profile.read). Login permanece igual.

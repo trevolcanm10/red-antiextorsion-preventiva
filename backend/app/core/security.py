@@ -2,9 +2,10 @@
 from datetime import datetime, timedelta, timezone
 from functools import lru_cache
 from uuid import UUID
+from typing import Annotated
 
 import jwt
-from pydantic import BaseModel, ConfigDict, StrictInt, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictInt, model_validator
 from pwdlib import PasswordHash
 from pwdlib.exceptions import UnknownHashError
 
@@ -40,6 +41,7 @@ class AccessClaims(BaseModel):
     exp: StrictInt
     iss: str
     aud: str
+    ver: Annotated[StrictInt, Field(ge=1)]
 
     @model_validator(mode="after")
     def chronological(self) -> "AccessClaims":
@@ -48,10 +50,14 @@ class AccessClaims(BaseModel):
         return self
 
 
-def create_access_token(user_id: UUID, organization_id: UUID, settings: AuthSettings) -> str:
+def create_access_token(
+    user_id: UUID, organization_id: UUID, settings: AuthSettings, *, auth_version: int,
+) -> str:
+    if type(auth_version) is not int or auth_version < 1:
+        raise ValueError("A positive integer authentication version is required")
     now = datetime.now(timezone.utc)
     return jwt.encode(
-        {"sub": str(user_id), "organization_id": str(organization_id),
+        {"sub": str(user_id), "organization_id": str(organization_id), "ver": auth_version,
          "iat": int(now.timestamp()),
          "exp": int((now + timedelta(minutes=settings.JWT_ACCESS_TOKEN_MINUTES)).timestamp()),
          "iss": settings.JWT_ISSUER, "aud": settings.JWT_AUDIENCE},
@@ -63,7 +69,7 @@ def decode_access_token(token: str, settings: AuthSettings) -> AccessClaims:
     payload = jwt.decode(
         token, settings.JWT_SECRET.get_secret_value(), algorithms=[ALGORITHM],
         issuer=settings.JWT_ISSUER, audience=settings.JWT_AUDIENCE,
-        options={"require": ["sub", "organization_id", "iat", "exp", "iss", "aud"],
+        options={"require": ["sub", "organization_id", "iat", "exp", "iss", "aud", "ver"],
                  "strict_aud": True},
     )
     return AccessClaims.model_validate(payload)

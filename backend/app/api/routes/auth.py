@@ -18,7 +18,7 @@ def login(payload: LoginRequest, db: Database, settings: AuthConfig) -> TokenRes
     if user is None:
         raise unauthorized()
     return TokenResponse(
-        access_token=create_access_token(user.id, user.organization_id, settings),
+        access_token=create_access_token(user.id, user.organization_id, settings, auth_version=user.auth_version),
         expires_in=settings.JWT_ACCESS_TOKEN_MINUTES * 60,
     )
 

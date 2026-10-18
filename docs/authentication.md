@@ -1,5 +1,10 @@
 # Fase 3.1 - Autenticacion privada
 
+> Actualizacion Fase 3.3: el alcance historico de esta fase se amplia en
+> [accounts.md](accounts.md). Ahora existen rutas privadas de gestion de cuentas y
+> permisos administrativos explicitos. La ampliacion aprobada [auth-version.md](auth-version.md)
+> habilita reactivacion segura con auth_version y migracion 0002. Las restricciones de privacidad y organizacion siguen vigentes.
+
 Implementa POST /api/v1/auth/login y GET /api/v1/auth/me. No agrega tablas,
 columnas ni migraciones. No hay registro publico de usuarios, administradores u
 organizaciones. No se implementa aprovisionamiento de cuentas, solicitudes de acceso,
@@ -68,7 +73,9 @@ que todos los caminos de autenticacion tarden exactamente lo mismo.
 
 Tras login valido se actualiza last_login en UTC y, si procede, el hash, en la misma
 transaccion. No se modifica last_login ante fallos ni por consultar /me.
-Los claims obligatorios son sub (UUID), organization_id (UUID), iat, exp, iss y aud.
+Los claims obligatorios son sub (UUID), organization_id (UUID), iat, exp, iss, aud
+y ver (entero positivo), comparado con users.auth_version en cada peticion. Tokens
+antiguos sin ver se rechazan y requieren un nuevo login.
 Se verifican firma, algoritmo permitido, emisor, audiencia, tipos, orden de fechas
 y expiracion sin tolerancia adicional. No se incluyen password, hash, correo o rol.
 Los JWT estan firmados, no cifrados; no se deben colocar datos sensibles en ellos.
@@ -117,7 +124,9 @@ No ofrece defensa distribuida, bloqueo de cuentas ni auditoria persistente.
 
 ## Limitaciones de sesiones
 
-No hay refresh token, blacklist, revocacion individual ni logout de servidor. Un token
+No hay refresh token, blacklist, revocacion de un JWT individual ni logout de servidor.
+Desactivar incrementa auth_version y revoca todos los JWT previos de ese usuario;
+reactivar no vuelve a habilitarlos (ver auth-version.md). Un token
 robado funciona hasta expirar si usuario y organizacion siguen habilitados; cambiar
 la contrasena no lo invalida. Desactivar cuenta/organizacion tiene efecto en la siguiente
 peticion. Los roles cambian en la siguiente peticion sin volver a iniciar sesion.

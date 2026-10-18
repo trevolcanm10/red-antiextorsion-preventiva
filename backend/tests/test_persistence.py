@@ -66,7 +66,7 @@ class SchemaTests(unittest.TestCase):
         self.assertEqual(sql.count("CREATE TRIGGER "), 3)
         self.assertIn("TIMESTAMP WITH TIME ZONE", sql)
         output.truncate(0); output.seek(0)
-        command.downgrade(config, "0001:base", sql=True)
+        command.downgrade(config, "head:base", sql=True)
         self.assertEqual(output.getvalue().count("DROP TYPE "), 5)
         self.assertEqual(output.getvalue().count("DROP FUNCTION "), 3)
 
