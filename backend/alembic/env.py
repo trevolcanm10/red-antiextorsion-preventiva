@@ -7,6 +7,7 @@ from alembic import context
 
 from app.core.config import get_settings
 from app.db.base import Base
+import app.models  # noqa: F401 - register every mapped table
 
 # Este es el objeto Config de Alembic, que da acceso a los
 # valores del archivo .ini en uso.
@@ -14,7 +15,8 @@ config = context.config
 
 # La URL de la base de datos se obtiene desde la configuracion de la
 # aplicacion (Pydantic Settings), no se hardcodea aqui.
-config.set_main_option("sqlalchemy.url", get_settings().database_url)
+if not config.get_main_option("sqlalchemy.url"):
+    config.set_main_option("sqlalchemy.url", get_settings().database_url.replace("%", "%%"))
 
 # Interpreta el archivo de configuracion para el logging de Python.
 if config.config_file_name is not None:
