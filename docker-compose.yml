@@ -1,0 +1,21 @@
+services:
+  db:
+    container_name: red_antiextorsion_db
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-red_antiextorsion}
+    ports:
+      - "5432:5432"
+    volumes:
+      - red-antiextorsion-preventiva_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-red_antiextorsion}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  red-antiextorsion-preventiva_postgres_data:
+    external: true
